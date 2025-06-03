@@ -1,0 +1,161 @@
+# Snowflake Cortex Analyst Model definition for P2P transactions.
+# This YAML file defines the semantic layer, including tables,
+# dimensions, measures, time dimensions, and relationships.
+
+name: P2P_TRANSACTIONS_MODEL
+tables:
+  - name: p2p_users
+    description: "User dimension table with unique user identifiers and community information."
+    base_table:
+      database: STEPHANE_SANDBOX
+      schema: PUBLIC
+      table: P2P_USERS_VW_LOU
+    primary_key:
+      columns:
+        - NODEID
+    dimensions:
+      - name: node_id
+        expr: NODEID
+        description: "Unique identifier for a user."
+        data_type: number
+      - name: community
+        expr: COMMUNITY
+        description: "The community or group the user belongs to."
+        data_type: number
+
+  - name: p2p_transactions
+    description: "Individual peer-to-peer transaction records between users."
+    base_table:
+      database: STEPHANE_SANDBOX
+      schema: PUBLIC
+      table: P2P_TRANSACTIONS
+    primary_key:
+      # Composite primary key for individual transactions
+      columns:
+        - SOURCENODEID
+        - TARGETNODEID
+        - TRANSACTION_DATETIME
+    time_dimensions:
+      - name: transaction_datetime
+        expr: TRANSACTION_DATETIME
+        description: "The timestamp when the transaction occurred."
+        unique: false # Transactions can happen at the same time for different users
+        data_type: timestamp # Use timestamp for full datetime precision
+    measures:
+      - name: transaction_amount
+        expr: TRANSACTION_AMOUNT
+        description: "The monetary value of the individual transaction."
+        default_aggregation: sum
+        data_type: number
+    dimensions:
+      - name: source_node_id
+        expr: SOURCENODEID
+        description: "The unique identifier of the user who initiated the transaction."
+        data_type: number
+      - name: target_node_id
+        expr: TARGETNODEID
+        description: "The unique identifier of the user who received the transaction."
+        data_type: number
+
+  - name: p2p_agg_transactions
+    description: "Aggregated peer-to-peer transactions, summarizing total amounts exchanged."
+    base_table:
+      database: STEPHANE_SANDBOX
+      schema: PUBLIC
+      table: P2P_AGG_TRANSACTIONS
+    primary_key:
+      # Composite primary key for aggregated transactions
+      columns:
+        - SOURCENODEID
+        - TARGETNODEID
+    measures:
+      - name: total_amount
+        expr: TOTAL_AMOUNT
+        description: "The total aggregated amount of all transactions between the source and target users."
+        default_aggregation: sum
+        data_type: number
+    dimensions:
+      - name: source_node_id
+        expr: SOURCENODEID
+        description: "The unique identifier of the user who initiated the aggregated transactions."
+        data_type: number
+      - name: target_node_id
+        expr: TARGETNODEID
+        description: "The unique identifier of the user who received the aggregated transactions."
+        data_type: number
+
+  - name: p2p_shared_card
+    description: "Records indicating a relationship between two users who share a card or have a shared card association."
+    base_table:
+      database: STEPHANE_SANDBOX
+      schema: PUBLIC
+      table: P2P_W_SHARED_CARD
+    primary_key:
+      # Composite primary key for shared card relationships
+      columns:
+        - SOURCENODEID
+        - TARGETNODEID
+    dimensions:
+      - name: source_node_id
+        expr: SOURCENODEID
+        description: "The unique identifier of the first user in the shared card relationship."
+        data_type: number
+      - name: target_node_id
+        expr: TARGETNODEID
+        description: "The unique identifier of the second user in the shared card relationship."
+        data_type: number
+
+relationships:
+  - name: transactions_to_source_user
+    left_table: p2p_transactions
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: source_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
+
+  - name: transactions_to_target_user
+    left_table: p2p_transactions
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: target_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
+
+  - name: agg_transactions_to_source_user
+    left_table: p2p_agg_transactions
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: source_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
+
+  - name: agg_transactions_to_target_user
+    left_table: p2p_agg_transactions
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: target_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
+
+  - name: shared_card_to_source_user
+    left_table: p2p_shared_card
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: source_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
+
+  - name: shared_card_to_target_user
+    left_table: p2p_shared_card
+    right_table: p2p_users
+    relationship_columns:
+      - left_column: target_node_id
+        right_column: node_id
+    join_type: left_outer
+    relationship_type: many_to_one
