@@ -44,5 +44,33 @@ GROUP BY sourceNodeId, targetNodeId;
 SELECT * FROM STEPHANE_SANDBOX.public.P2P_AGG_TRANSACTIONS;
 
 CREATE OR REPLACE VIEW p2p_users_vw (nodeId) AS
-    SELECT DISTINCT p2p_demo.public.p2p_users.NODEID as nodeid
+    SELECT DISTINCT STEPHANE_SANDBOX.public.p2p_users.NODEID as nodeid
     FROM p2p_users;
+
+
+GRANT SELECT ON TABLE STEPHANE_SANDBOX.PUBLIC.p2p_users_vw TO APPLICATION neo4j_graph_analytics;
+GRANT SELECT ON TABLE STEPHANE_SANDBOX.PUBLIC.P2P_AGG_TRANSACTIONS TO APPLICATION neo4j_graph_analytics;
+GRANT SELECT ON TABLE STEPHANE_SANDBOX.PUBLIC.p2p_users_vw_lou TO APPLICATION neo4j_graph_analytics;
+
+CALL neo4j_graph_analytics.graph.louvain('CPU_X64_XS', {
+    'project': {
+        'nodeTables': ['STEPHANE_SANDBOX.public.p2p_users_vw'],
+        'relationshipTables': {
+            'STEPHANE_SANDBOX.public.P2P_AGG_TRANSACTIONS': {
+                'sourceTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',
+                'targetTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',
+                'orientation': 'NATURAL'
+            }
+        }
+    },
+    'compute': { 'consecutiveIds': true, 'relationshipWeightProperty':'TOTAL_AMOUNT'},
+    'write': [{
+        'nodeLabel': 'p2p_users_vw',
+        'outputTable': 'STEPHANE_SANDBOX.public.p2p_users_vw_lou'
+    }]
+});
+
+select community, COUNT(*) AS community_size, 
+from STEPHANE_SANDBOX.public.p2p_users_vw_lou
+group by community
+order by community_size desc;
