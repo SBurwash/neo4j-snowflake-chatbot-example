@@ -19,10 +19,12 @@ from snowflake.snowpark.exceptions import SnowparkSQLException
 # List of available semantic model paths in the format: <DATABASE>.<SCHEMA>.<STAGE>/<FILE-NAME>
 # Each path points to a YAML file defining a semantic model
 AVAILABLE_SEMANTIC_MODELS_PATHS = [
-    "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model.yml"
+    "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model.yml",
+    "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model_automated.yaml",
 ]
 API_ENDPOINT = "/api/v2/cortex/analyst/message"
 FEEDBACK_API_ENDPOINT = "/api/v2/cortex/analyst/feedback"
+API_COMPLETE_ENDPOINT = "/api/v2/cortex/inference:complete"
 API_TIMEOUT = 50000  # in milliseconds
 
 # Initialize a Snowpark session for executing queries
@@ -150,6 +152,57 @@ def display_warnings():
         st.warning(warning["message"], icon="⚠️")
 
 
+def create_relevant_graph_tables(messages: List[Dict]) -> Tuple[Dict, Optional[str]]:
+    """
+    Send chat history to LLM and return the response.
+
+    Args:
+        messages (List[Dict]): The conversation history.
+
+    Returns:
+        Optional[Dict]: The response from the Cortex Analyst API.
+    """
+    # Prepare the request body with the user's prompt
+    request_body = {
+        "messages": messages,
+        "model": "mistral-large2"
+    }
+
+    # Send a POST request to the Cortex Analyst API endpoint
+    # Adjusted to use positional arguments as per the API's requirement
+    resp = _snowflake.send_snow_api_request(
+        "POST",  # method
+        API_COMPLETE_ENDPOINT,  # path
+        {},  # headers
+        {},  # params
+        request_body,  # body
+        None,  # request_guid
+        API_TIMEOUT,  # timeout in milliseconds
+    )
+
+    # Content is a string with serialized JSON object
+    parsed_content = json.loads(resp["content"])
+
+    # Check if the response is successful
+    if resp["status"] < 400:
+        # Return the content of the response as a JSON object
+        return parsed_content, None
+    else:
+        # Craft readable error message
+        error_msg = f"""
+🚨 A model creation error has occurred 🚨
+
+* response code: `{resp['status']}`
+* request-id: `{parsed_content['request_id']}`
+* error code: `{parsed_content['error_code']}`
+
+Message:
+```
+{parsed_content['message']}
+```
+        """
+        return parsed_content, error_msg
+    
 def get_analyst_response(messages: List[Dict]) -> Tuple[Dict, Optional[str]]:
     """
     Send chat history to the Cortex Analyst API and return the response.
