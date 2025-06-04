@@ -19,8 +19,8 @@ from snowflake.snowpark.exceptions import SnowparkSQLException
 # List of available semantic model paths in the format: <DATABASE>.<SCHEMA>.<STAGE>/<FILE-NAME>
 # Each path points to a YAML file defining a semantic model
 AVAILABLE_SEMANTIC_MODELS_PATHS = [
-    "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model.yml",
     "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model_automated.yaml",
+    "STEPHANE_SANDBOX.PUBLIC.RAW_DATA/semantic_model.yml",
 ]
 API_ENDPOINT = "/api/v2/cortex/analyst/message"
 FEEDBACK_API_ENDPOINT = "/api/v2/cortex/analyst/feedback"
@@ -121,6 +121,7 @@ def process_user_input(prompt: str):
     with st.chat_message("analyst"):
         with st.spinner("Waiting for Analyst's response..."):
             time.sleep(1)
+            tmp, error_msg_graph = create_relevant_graph_tables(st.session_state.messages)
             response, error_msg = get_analyst_response(st.session_state.messages)
             if error_msg is None:
                 analyst_message = {
@@ -162,30 +163,57 @@ def create_relevant_graph_tables(messages: List[Dict]) -> Tuple[Dict, Optional[s
     Returns:
         Optional[Dict]: The response from the Cortex Analyst API.
     """
-    # Prepare the request body with the user's prompt
-    request_body = {
-        "messages": messages,
-        "model": "mistral-large2"
-    }
+    # # Prepare the request body with the user's prompt
+    # request_body = {
+    #     "messages": messages,
+    #     "model": "mistral-large2"
+    # }
 
-    # Send a POST request to the Cortex Analyst API endpoint
-    # Adjusted to use positional arguments as per the API's requirement
-    resp = _snowflake.send_snow_api_request(
-        "POST",  # method
-        API_COMPLETE_ENDPOINT,  # path
-        {},  # headers
-        {},  # params
-        request_body,  # body
-        None,  # request_guid
-        API_TIMEOUT,  # timeout in milliseconds
-    )
+    # # Send a POST request to the Cortex Analyst API endpoint
+    # # Adjusted to use positional arguments as per the API's requirement
+    # resp = _snowflake.send_snow_api_request(
+    #     "POST",  # method
+    #     API_COMPLETE_ENDPOINT,  # path
+    #     {},  # headers
+    #     {},  # params
+    #     request_body,  # body
+    #     None,  # request_guid
+    #     API_TIMEOUT,  # timeout in milliseconds
+    # )
 
-    # Content is a string with serialized JSON object
-    parsed_content = json.loads(resp["content"])
+    # # Content is a string with serialized JSON object
+    # parsed_content = json.loads(resp["content"])
 
     # Check if the response is successful
-    if resp["status"] < 400:
+    if True:
         # Return the content of the response as a JSON object
+        parsed_content = {
+            "request_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+            "message": {
+                "role": "analyst",
+                "content": [
+                {
+                    "type": "text",
+                    "text": "Based on your request, we've prepared a query to run the **Louvain community detection algorithm** on your p2p_users_vw graph. This will help identify natural communities or clusters within your user base, considering the total transaction amount as the relationship weight. The results will be stored in a new table: STEPHANE_SANDBOX.public.p2p_users_vw_lou."
+                },
+                {
+                    "type": "sql",
+                    "statement": "CALL neo4j_graph_analytics.graph.louvain('CPU_X64_XS', {\n    'project': {\n        'nodeTables': ['STEPHANE_SANDBOX.public.p2p_users_vw'],\n        'relationshipTables': {\n            'STEPHANE_SANDBOX.public.P2P_AGG_TRANSACTIONS': {\n                'sourceTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',\n                'targetTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',\n                'orientation': 'NATURAL'\n            }\n        }\n    },\n    'compute': { 'consecutiveIds': true, 'relationshipWeightProperty':'TOTAL_AMOUNT'},\n    'write': [{\n        'nodeLabel': 'p2p_users_vw',\n        'outputTable': 'STEPHANE_SANDBOX.public.p2p_users_vw_lou'\n    }]\n});",
+                    "confidence": {
+                    "verified_query_used": None
+                    }
+                }
+                ]
+            },
+            "warnings": [],
+            "response_metadata": {
+                "model_names": [
+                "claude-3-5-sonnet"
+                ],
+                "cortex_search_retrieval": [],
+                "question_category": "GRAPH_ANALYTICS"
+            }
+            }
         return parsed_content, None
     else:
         # Craft readable error message
