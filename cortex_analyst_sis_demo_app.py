@@ -99,7 +99,7 @@ def handle_error_notifications():
 
 def process_user_input(prompt: str):
     """
-    Process user input and update the conversation history.
+    Process user input and update the conversation history by running two SQL queries sequentially.
 
     Args:
         prompt (str): The user's input.
@@ -107,7 +107,7 @@ def process_user_input(prompt: str):
     # Clear previous warnings at the start of a new request
     st.session_state.warnings = []
 
-    # Create a new message, append to history and display imidiately
+    # Create a new message, append to history and display immediately
     new_user_message = {
         "role": "user",
         "content": [{"type": "text", "text": prompt}],
@@ -117,32 +117,45 @@ def process_user_input(prompt: str):
         user_msg_index = len(st.session_state.messages) - 1
         display_message(new_user_message["content"], user_msg_index)
 
-    # Show progress indicator inside analyst chat message while waiting for response
+    # First SQL Query: create_relevant_graph_tables
     with st.chat_message("analyst"):
-        with st.spinner("Waiting for Analyst's response..."):
+        with st.spinner("Waiting for Graph Analyst's response (Query 1/2)..."):
             time.sleep(1)
-            tmp, error_msg_graph = create_relevant_graph_tables(st.session_state.messages)
-            response, error_msg = get_analyst_response(st.session_state.messages)
-            if error_msg is None:
-                analyst_message = {
-                    "role": "analyst",
-                    "content": response["message"]["content"],
-                    "request_id": response["request_id"],
-                }
-            else:
-                analyst_message = {
-                    "role": "analyst",
-                    "content": [{"type": "text", "text": error_msg}],
-                    "request_id": response["request_id"],
-                }
+            response1, error_msg1 = create_relevant_graph_tables(st.session_state.messages)
+            
+            analyst_message1 = {
+                "role": "analyst",
+                "content": response1["message"]["content"] if error_msg1 is None else [{"type": "text", "text": error_msg1}],
+                "request_id": response1["request_id"],
+            }
+            if error_msg1 is not None:
                 st.session_state["fire_API_error_notify"] = True
+            
+            if "warnings" in response1:
+                st.session_state.warnings.extend(response1["warnings"]) # Use extend to add all warnings
 
-            if "warnings" in response:
-                st.session_state.warnings = response["warnings"]
+            st.session_state.messages.append(analyst_message1)
+            # Rerun is handled after both queries for a single display update
 
-            st.session_state.messages.append(analyst_message)
+    # Second SQL Query: get_analyst_response
+    with st.chat_message("analyst"):
+        with st.spinner("Waiting for Analyst's response (Query 2/2)..."):
+            time.sleep(1)
+            response2, error_msg2 = get_analyst_response(st.session_state.messages)
+            
+            analyst_message2 = {
+                "role": "analyst",
+                "content": response2["message"]["content"] if error_msg2 is None else [{"type": "text", "text": error_msg2}],
+                "request_id": response2["request_id"],
+            }
+            if error_msg2 is not None:
+                st.session_state["fire_API_error_notify"] = True
+            
+            if "warnings" in response2:
+                st.session_state.warnings.extend(response2["warnings"]) # Use extend to add all warnings
+
+            st.session_state.messages.append(analyst_message2)
             st.rerun()
-
 
 def display_warnings():
     """
