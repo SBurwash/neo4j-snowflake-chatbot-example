@@ -29,7 +29,54 @@ API_TIMEOUT = 50000  # in milliseconds
 
 # Initialize a Snowpark session for executing queries
 session = get_active_session()
+setup_message = """
+    You are an expert Neo4j Graph Analytics for Snowflake SQL generator. Your task is to interpret user requests for graph analysis and generate a single, complete SQL query.
 
+    **Key Guidelines and Constraints:**
+
+    1.  **Output Format:** Your response MUST be a valid SQL query for Neo4j Graph Analytics for Snowflake. Do not include any conversational text, explanations, or code blocks other than the SQL query itself.
+    2.  **Algorithm Selection:**
+        * Choose the most appropriate graph algorithm from the available list: `BETWEENNESS_CENTRALITY`, `DEGREE_CENTRALITY`, `DIJKSTRA_SINGLE_SOURCE_SHORTEST_PATH`, `DIJKSTRA_SOURCE_TARGET_SHORTEST_PATH`, `FASTRP`, `FASTPATH`, `GRAPHSAGE`, `K_NEAREST_NEIGHBORS`, `LOUVAIN`, `NODE_CLASSIFICATION_TRAINING`, `NODE_CLASSIFICATION_PREDICTION`, `NODE_EMBEDDINGS_TRAINING`, `NODE_EMBEDDINGS_PREDICTION`, `NODE_SIMILARITY`, `PAGERANK`, `TRIANGLE_COUNT`, `WEAKLY_CONNECTED_COMPONENTS`.
+        * Prioritize algorithms that directly address community detection, centrality, pathfinding, or embeddings based on the user's intent.
+    3.  **SQL Structure:** The SQL query will adhere to the following pattern for calling Neo4j Graph Analytics:
+
+        ```sql
+        CALL NEO4J_GRAPH_ANALYTICS.ADMIN.RUN_JOB(
+            'YOUR_APP_NAME',
+            '<ALGORITHM_NAME>',
+            OBJECT_CONSTRUCT(
+                'node_table', 'YOUR_NODES_TABLE',
+                'relationship_table', 'YOUR_RELATIONSHIPS_TABLE',
+                'output_table', 'YOUR_OUTPUT_TABLE'
+                -- Add algorithm-specific parameters here, e.g., 'source_node_id', 'target_node_id', 'weight_property', 'iterations', 'embedding_size', etc.
+            )
+        );
+        ```
+        * `YOUR_APP_NAME` should always be `NEO4J_GRAPH_ANALYTICS`.
+        * `<ALGORITHM_NAME>` must be one of the exact algorithm names listed in guideline 2, enclosed in single quotes.
+        * `YOUR_NODES_TABLE` and `YOUR_RELATIONSHIPS_TABLE` will be identified from the provided semantic context. These should be fully qualified (e.g., `DATABASE.SCHEMA.TABLE_NAME`).
+        * `YOUR_OUTPUT_TABLE` should be a new, descriptive table name in the format `APP_SCHEMA.ALGORITHM_OUTPUT_<TIMESTAMP_OR_DESCRIPTIVE_SUFFIX>`. For example, `GRAPH_APP_RESULTS.LOUVAIN_COMMUNITIES_202506041621`. Ensure the output table name is distinct and descriptive.
+        * You MUST infer and include any necessary algorithm-specific parameters within the `OBJECT_CONSTRUCT` based on the user's request and the semantic context. Common parameters include:
+            * `source_node_id` (for shortest path, typically a column from the nodes table)
+            * `target_node_id` (for shortest path, typically a column from the nodes table)
+            * `weight_property` (for weighted algorithms, typically a numeric column from the relationships table)
+            * `iterations` (for iterative algorithms like PageRank)
+            * `embedding_size` (for embedding algorithms)
+            * `label_property` (for node classification)
+            * `relationship_type_property` (if relationships have types)
+            * `node_id_property` (if node IDs are not the primary key)
+            * `source_node_property` (for relationship table mapping, e.g., 'FROM_NODE_ID')
+            * `target_node_property` (for relationship table mapping, e.g., 'TO_NODE_ID')
+    4.  **Semantic Context Usage:** The user will provide a "semantic file" containing metadata about available tables and their relationships. You MUST parse this context to:
+        * Identify appropriate node and relationship tables for the requested analysis.
+        * Infer column names for node IDs, relationship source/target, and any properties (like weights) needed by the chosen algorithm.
+        * **Crucially, only use tables and columns explicitly defined in the semantic context.** If a suitable table or column is not found for a requested analysis, indicate that the request cannot be fulfilled with the current data schema.
+    5.  **Error Handling (Implicit):** If a user's request cannot be translated into a valid Neo4j Graph Analytics SQL query given the available algorithms and semantic context, output a clear message indicating why the query cannot be generated and what information is missing. For example: "Error: Cannot generate SQL. The request for [ALGORITHM] requires a [PROPERTY/TABLE] that is not defined in the provided semantic context."
+
+    **Semantic File Format Expectation (for LLM to parse):**
+
+    The semantic file will be provided in a JSON-like format within the user's prompt. It will describe databases, schemas, tables, columns, and their inferred roles (e.g., `node_table`, `relationship_table`, `node_id`, `relationship_source_id`, `relationship_target_id`, `properties`).
+"""
 
 def main():
     # Initialize session state
@@ -37,6 +84,10 @@ def main():
         reset_session_state()
     show_header_and_sidebar()
     if len(st.session_state.messages) == 0:
+        st.session_state.messages.append({
+            "role": "system",
+            "content": [{"type": "text", "text": setup_message}],
+        })
         process_user_input("What questions can I ask?")
     display_conversation()
     handle_user_inputs()
@@ -136,26 +187,32 @@ def process_user_input(prompt: str):
 
             st.session_state.messages.append(analyst_message1)
             # Rerun is handled after both queries for a single display update
-
-    # Second SQL Query: get_analyst_response
-    with st.chat_message("analyst"):
-        with st.spinner("Waiting for Analyst's response (Query 2/2)..."):
-            time.sleep(1)
-            response2, error_msg2 = get_analyst_response(st.session_state.messages)
-            
-            analyst_message2 = {
-                "role": "analyst",
-                "content": response2["message"]["content"] if error_msg2 is None else [{"type": "text", "text": error_msg2}],
-                "request_id": response2["request_id"],
-            }
-            if error_msg2 is not None:
-                st.session_state["fire_API_error_notify"] = True
-            
-            if "warnings" in response2:
-                st.session_state.warnings.extend(response2["warnings"]) # Use extend to add all warnings
-
-            st.session_state.messages.append(analyst_message2)
             st.rerun()
+
+    #         bridge_user_message = {
+    #             "role": "user",
+    #             "content": [{"type": "text", "text": "Please take my previous prompt and perform an analysis"}],
+    #         }
+    #         st.session_state.messages.append(bridge_user_message)
+
+    # # Second SQL Query: get_analyst_response
+    #     with st.spinner("Waiting for Analyst's response (Query 2/2)..."):
+    #         time.sleep(1)
+    #         response2, error_msg2 = get_analyst_response(st.session_state.messages)
+            
+    #         analyst_message2 = {
+    #             "role": "analyst",
+    #             "content": response2["message"]["content"] if error_msg2 is None else [{"type": "text", "text": error_msg2}],
+    #             "request_id": response2["request_id"],
+    #         }
+    #         if error_msg2 is not None:
+    #             st.session_state["fire_API_error_notify"] = True
+            
+    #         if "warnings" in response2:
+    #             st.session_state.warnings.extend(response2["warnings"]) # Use extend to add all warnings
+
+    #         st.session_state.messages.append(analyst_message2)
+    #         st.rerun()
 
 def display_warnings():
     """
@@ -176,57 +233,31 @@ def create_relevant_graph_tables(messages: List[Dict]) -> Tuple[Dict, Optional[s
     Returns:
         Optional[Dict]: The response from the Cortex Analyst API.
     """
-    # # Prepare the request body with the user's prompt
-    # request_body = {
-    #     "messages": messages,
-    #     "model": "mistral-large2"
-    # }
+    # Prepare the request body with the user's prompt
+    request_body = {
+        "messages": messages,
+        "model": "mistral-large2",
+    }
 
-    # # Send a POST request to the Cortex Analyst API endpoint
-    # # Adjusted to use positional arguments as per the API's requirement
-    # resp = _snowflake.send_snow_api_request(
-    #     "POST",  # method
-    #     API_COMPLETE_ENDPOINT,  # path
-    #     {},  # headers
-    #     {},  # params
-    #     request_body,  # body
-    #     None,  # request_guid
-    #     API_TIMEOUT,  # timeout in milliseconds
-    # )
+    # Send a POST request to the Cortex Analyst API endpoint
+    # Adjusted to use positional arguments as per the API's requirement
+    resp = _snowflake.send_snow_api_request(
+        "POST",  # method
+        API_COMPLETE_ENDPOINT,  # path
+        {},  # headers
+        {},  # params
+        request_body,  # body
+        None,  # request_guid
+        API_TIMEOUT,  # timeout in milliseconds
+    )
 
-    # # Content is a string with serialized JSON object
-    # parsed_content = json.loads(resp["content"])
+    # Content is a string with serialized JSON object
+    parsed_content = json.loads(resp["content"])
 
     # Check if the response is successful
-    if True:
+    # Check if the response is successful
+    if resp["status"] < 400:
         # Return the content of the response as a JSON object
-        parsed_content = {
-            "request_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-            "message": {
-                "role": "analyst",
-                "content": [
-                {
-                    "type": "text",
-                    "text": "Based on your request, we've prepared a query to run the **Louvain community detection algorithm** on your p2p_users_vw graph. This will help identify natural communities or clusters within your user base, considering the total transaction amount as the relationship weight. The results will be stored in a new table: STEPHANE_SANDBOX.public.p2p_users_vw_lou."
-                },
-                {
-                    "type": "sql",
-                    "statement": "CALL neo4j_graph_analytics.graph.louvain('CPU_X64_XS', {\n    'project': {\n        'nodeTables': ['STEPHANE_SANDBOX.public.p2p_users_vw'],\n        'relationshipTables': {\n            'STEPHANE_SANDBOX.public.P2P_AGG_TRANSACTIONS': {\n                'sourceTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',\n                'targetTable': 'STEPHANE_SANDBOX.public.p2p_users_vw',\n                'orientation': 'NATURAL'\n            }\n        }\n    },\n    'compute': { 'consecutiveIds': true, 'relationshipWeightProperty':'TOTAL_AMOUNT'},\n    'write': [{\n        'nodeLabel': 'p2p_users_vw',\n        'outputTable': 'STEPHANE_SANDBOX.public.p2p_users_vw_lou'\n    }]\n});",
-                    "confidence": {
-                    "verified_query_used": None
-                    }
-                }
-                ]
-            },
-            "warnings": [],
-            "response_metadata": {
-                "model_names": [
-                "claude-3-5-sonnet"
-                ],
-                "cortex_search_retrieval": [],
-                "question_category": "GRAPH_ANALYTICS"
-            }
-            }
         return parsed_content, None
     else:
         # Craft readable error message
