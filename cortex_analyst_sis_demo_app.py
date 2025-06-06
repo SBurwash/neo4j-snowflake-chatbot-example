@@ -156,7 +156,7 @@ def process_user_input(prompt: str):
     """
     Process user input and update the conversation history by running two SQL queries sequentially.
 
-    Args:
+    Args: I HATE LIFE
         prompt (str): The user's input.
     """
     # Clear previous warnings at the start of a new request
