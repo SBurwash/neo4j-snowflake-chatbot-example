@@ -3,6 +3,7 @@ Cortex Analyst App
 ====================
 This app allows users to interact with their data using natural language.
 """
+
 import json  # To handle JSON data
 import time
 from datetime import datetime
@@ -78,16 +79,19 @@ setup_message = """
     The semantic file will be provided in a JSON-like format within the user's prompt. It will describe databases, schemas, tables, columns, and their inferred roles (e.g., `node_table`, `relationship_table`, `node_id`, `relationship_source_id`, `relationship_target_id`, `properties`).
 """
 
+
 def main():
     # Initialize session state
     if "messages" not in st.session_state:
         reset_session_state()
     show_header_and_sidebar()
     if len(st.session_state.messages) == 0:
-        st.session_state.messages.append({
-            "role": "system",
-            "content": [{"type": "text", "text": setup_message}],
-        })
+        st.session_state.messages.append(
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": setup_message}],
+            }
+        )
         process_user_input("What questions can I ask?")
     display_conversation()
     handle_user_inputs()
@@ -172,18 +176,26 @@ def process_user_input(prompt: str):
     with st.chat_message("analyst"):
         with st.spinner("Waiting for Graph Analyst's response (Query 1/2)..."):
             time.sleep(1)
-            response1, error_msg1 = create_relevant_graph_tables(st.session_state.messages)
-            
+            response1, error_msg1 = create_relevant_graph_tables(
+                st.session_state.messages
+            )
+
             analyst_message1 = {
                 "role": "analyst",
-                "content": response1["message"]["content"] if error_msg1 is None else [{"type": "text", "text": error_msg1}],
+                "content": (
+                    response1["message"]["content"]
+                    if error_msg1 is None
+                    else [{"type": "text", "text": error_msg1}]
+                ),
                 "request_id": response1["request_id"],
             }
             if error_msg1 is not None:
                 st.session_state["fire_API_error_notify"] = True
-            
+
             if "warnings" in response1:
-                st.session_state.warnings.extend(response1["warnings"]) # Use extend to add all warnings
+                st.session_state.warnings.extend(
+                    response1["warnings"]
+                )  # Use extend to add all warnings
 
             st.session_state.messages.append(analyst_message1)
             # Rerun is handled after both queries for a single display update
@@ -199,7 +211,7 @@ def process_user_input(prompt: str):
     #     with st.spinner("Waiting for Analyst's response (Query 2/2)..."):
     #         time.sleep(1)
     #         response2, error_msg2 = get_analyst_response(st.session_state.messages)
-            
+
     #         analyst_message2 = {
     #             "role": "analyst",
     #             "content": response2["message"]["content"] if error_msg2 is None else [{"type": "text", "text": error_msg2}],
@@ -207,12 +219,13 @@ def process_user_input(prompt: str):
     #         }
     #         if error_msg2 is not None:
     #             st.session_state["fire_API_error_notify"] = True
-            
+
     #         if "warnings" in response2:
     #             st.session_state.warnings.extend(response2["warnings"]) # Use extend to add all warnings
 
     #         st.session_state.messages.append(analyst_message2)
     #         st.rerun()
+
 
 def display_warnings():
     """
@@ -274,7 +287,8 @@ Message:
 ```
         """
         return parsed_content, error_msg
-    
+
+
 def get_analyst_response(messages: List[Dict]) -> Tuple[Dict, Optional[str]]:
     """
     Send chat history to the Cortex Analyst API and return the response.
